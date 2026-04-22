@@ -30,11 +30,16 @@ export default function Home() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error("failed");
+      const text = await res.text();
 
-      setStatus("sent");
-    } catch {
-      setStatus("failed");
+      if (!res.ok) {
+        setStatus(`failed ${res.status}: ${text || "request failed"}`);
+        return;
+      }
+
+      setStatus(`sent ${res.status}`);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "network error");
     } finally {
       setSending(false);
     }
@@ -123,7 +128,7 @@ export default function Home() {
             </button>
 
             {status && (
-              <p className="mt-3 text-center text-[11px] font-black uppercase tracking-[0.18em]">
+              <p className="mt-3 break-words text-center text-[11px] font-black uppercase tracking-[0.12em]">
                 {status}
               </p>
             )}
