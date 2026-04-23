@@ -202,7 +202,8 @@ function ChartBackground() {
         size: "small" | "medium" | "large";
       },
       type: "bar" | "line" | "pie" | "scatter",
-      cell: number
+      cell: number,
+      offsetX = 0
     ) => {
       const rng = mulberry32(
         (tile.row + 1) * 10007 +
@@ -215,7 +216,7 @@ function ChartBackground() {
       const randInt = (min: number, max: number) =>
         Math.floor(rand(min, max + 1));
 
-      const areaX = tile.col * cell;
+      const areaX = tile.col * cell + offsetX;
       const areaY = tile.row * cell;
       const areaW = tile.spanCols * cell;
       const areaH = tile.spanRows * cell;
@@ -260,9 +261,7 @@ function ChartBackground() {
           ctx.fillRect(barX, h - barHeight, barWidth, barHeight);
           ctx.strokeRect(barX, h - barHeight, barWidth, barHeight);
         }
-      }
-
-      if (type === "line") {
+      } else if (type === "line") {
         ctx.beginPath();
         const stepX = dataPoints > 1 ? w / (dataPoints - 1) : w;
 
@@ -290,9 +289,7 @@ function ChartBackground() {
           );
           ctx.fill();
         }
-      }
-
-      if (type === "pie") {
+      } else if (type === "pie") {
         const radius = Math.min(w, h) * 0.36;
         const centerX = w / 2;
         const centerY = h / 2;
@@ -309,9 +306,7 @@ function ChartBackground() {
           ctx.stroke();
           startAngle += sliceAngle;
         }
-      }
-
-      if (type === "scatter") {
+      } else if (type === "scatter") {
         const pointCount = randInt(8, 16);
         ctx.fillStyle = `rgba(20, 20, 30, ${
           tile.size === "large" ? 0.12 : 0.1
@@ -335,20 +330,26 @@ function ChartBackground() {
       ctx.restore();
     };
 
-    const draw = (width: number, height: number) => {
-      ctx.clearRect(0, 0, width, height);
-      const { tiles, cell, rows, cols } = createLayout(width, height);
-      const types = buildTypeDeck(tiles.length, rows * 100 + cols * 10 + 7);
+    let animationFrame = 0;
+    let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+    let slideOffset = 0;
 
-      tiles.forEach((tile, index) => {
-        drawChart(tile, types[index], cell);
-      });
-    };
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+
+    let layout = createLayout(window.innerWidth, window.innerHeight);
+    let types = buildTypeDeck(
+      layout.tiles.length,
+      layout.rows * 100 + layout.cols * 10 + 7
+    );
+
+    const SLIDE_SPEED = 0.12;
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      dpr = window.devicePixelRatio || 1;
+      width = window.innerWidth;
+      height = window.innerHeight;
 
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
@@ -356,14 +357,53 @@ function ChartBackground() {
       canvas.style.height = `${height}px`;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw(width, height);
+
+      layout = createLayout(width, height);
+      types = buildTypeDeck(
+        layout.tiles.length,
+        layout.rows * 100 + layout.cols * 10 + 7
+      );
+      slideOffset = 0;
     };
 
-    window.addEventListener("resize", resize);
+    const drawFrame = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      const totalGridWidth = layout.cols * layout.cell;
+
+      slideOffset -= SLIDE_SPEED;
+      if (slideOffset <= -totalGridWidth) {
+        slideOffset = 0;
+      }
+
+      layout.tiles.forEach((tile, index) => {
+        drawChart(tile, types[index], layout.cell, slideOffset);
+      });
+
+      layout.tiles.forEach((tile, index) => {
+        drawChart(tile, types[index], layout.cell, slideOffset + totalGridWidth);
+      });
+
+      animationFrame = window.requestAnimationFrame(drawFrame);
+    };
+
+    const handleResize = () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        resize();
+        drawFrame();
+      }, 80);
+    };
+
+    window.addEventListener("resize", handleResize);
     resize();
+    drawFrame();
 
     return () => {
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", handleResize);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      clearTimeout(resizeTimeout);
     };
   }, []);
 
